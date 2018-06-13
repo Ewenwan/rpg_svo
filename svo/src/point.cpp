@@ -1,32 +1,19 @@
 // This file is part of SVO - Semi-direct Visual Odometry.
-//
-// Copyright (C) 2014 Christian Forster <forster at ifi dot uzh dot ch>
-// (Robotics and Perception Group, University of Zurich, Switzerland).
-//
-// SVO is free software: you can redistribute it and/or modify it under the
-// terms of the GNU General Public License as published by the Free Software
-// Foundation, either version 3 of the License, or any later version.
-//
-// SVO is distributed in the hope that it will be useful, but WITHOUT ANY
-// WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
-// FOR A PARTICULAR PURPOSE. See the GNU General Public License for more details.
-//
-// You should have received a copy of the GNU General Public License
-// along with this program.  If not, see <http://www.gnu.org/licenses/>.
+// 地图点  地图点优化 BA优化
 
 #include <stdexcept>
 #include <vikit/math_utils.h>
 #include <svo/point.h>
 #include <svo/frame.h>
 #include <svo/feature.h>
- 
+// 命名空间
 namespace svo {
 
 int Point::point_counter_ = 0;
 
 Point::Point(const Vector3d& pos) :
-  id_(point_counter_++),
-  pos_(pos),
+  id_(point_counter_++),//id
+  pos_(pos),//(x,y,z)
   normal_set_(false),
   n_obs_(0),
   v_pt_(NULL),
@@ -53,16 +40,16 @@ Point::Point(const Vector3d& pos, Feature* ftr) :
 {
   obs_.push_front(ftr);
 }
-
+//析构函数
 Point::~Point()
 {}
 
 void Point::addFrameRef(Feature* ftr)
 {
-  obs_.push_front(ftr);
+  obs_.push_front(ftr);//添加
   ++n_obs_;
 }
-
+//查找帧
 Feature* Point::findFrameRef(Frame* frame)
 {
   for(auto it=obs_.begin(), ite=obs_.end(); it!=ite; ++it)
@@ -70,7 +57,7 @@ Feature* Point::findFrameRef(Frame* frame)
       return *it;
   return NULL;    // no keyframe found
 }
-
+//删除帧
 bool Point::deleteFrameRef(Frame* frame)
 {
   for(auto it=obs_.begin(), ite=obs_.end(); it!=ite; ++it)
@@ -115,7 +102,7 @@ bool Point::getCloseViewObs(const Vector3d& framepos, Feature*& ftr) const
     return false;
   return true;
 }
-
+// 优化三维点
 void Point::optimize(const size_t n_iter)
 {
   Vector3d old_point = pos_;
@@ -137,11 +124,13 @@ void Point::optimize(const size_t n_iter)
       Point::jacobian_xyz2uv(p_in_f, (*it)->frame->T_f_w_.rotation_matrix(), J);
       const Vector2d e(vk::project2d((*it)->f) - vk::project2d(p_in_f));
       new_chi2 += e.squaredNorm();
+     // J.transpose() * J * X = -J.transpose() * e
       A.noalias() += J.transpose() * J;
       b.noalias() -= J.transpose() * e;
     }
 
     // solve linear system
+    // 线性方程组求解 得到点的更新量
     const Vector3d dp(A.ldlt().solve(b));
 
     // check if error increased
@@ -156,8 +145,8 @@ void Point::optimize(const size_t n_iter)
     }
 
     // update the model
-    Vector3d new_point = pos_ + dp;
-    old_point = pos_;
+    Vector3d new_point = pos_ + dp;// 加上更新量
+    old_point = pos_;// 更新迭代
     pos_ = new_point;
     chi2 = new_chi2;
 #ifdef POINT_OPTIMIZER_DEBUG
