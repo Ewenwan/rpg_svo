@@ -9,8 +9,7 @@
 // 命名空间
 namespace svo {
 
-int Point::point_counter_ = 0;
-
+int Point::point_counter_ = 0;//计数
 Point::Point(const Vector3d& pos) :
   id_(point_counter_++),//id
   pos_(pos),//(x,y,z)
