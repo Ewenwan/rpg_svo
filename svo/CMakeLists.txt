@@ -2,15 +2,15 @@
 # user build settings
 
 SET(TRACE TRUE)
-SET(HAVE_G2O FALSE) 
-SET(USE_ROS TRUE) # Set FALSE if you want to build this package without Catkin
+SET(HAVE_G2O FALSE) # G2O图优化
+SET(USE_ROS TRUE)   # ros Set FALSE if you want to build this package without Catkin
 SET(DEBUG_OUTPUT FALSE) # Only relevant if build without ROS
 
 ################################################################################
 
-SET(PROJECT_NAME svo)
+SET(PROJECT_NAME svo)# 项目名
 PROJECT(${PROJECT_NAME})
-CMAKE_MINIMUM_REQUIRED (VERSION 2.8.3)
+CMAKE_MINIMUM_REQUIRED (VERSION 2.8.3)# cmake 版本
 SET(CMAKE_BUILD_TYPE Release) # Release, RelWithDebInfo
 SET(CMAKE_VERBOSE_MAKEFILE OFF)
 SET(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${PROJECT_SOURCE_DIR}/CMakeModules/")
@@ -44,12 +44,12 @@ ELSE()
 ENDIF()
 SET(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS} -O3 -fsee -fomit-frame-pointer -fno-signed-zeros -fno-math-errno -funroll-loops")
 
-# Add plain cmake packages 
-FIND_PACKAGE(OpenCV REQUIRED)
-FIND_PACKAGE(Eigen REQUIRED)
-FIND_PACKAGE(Sophus REQUIRED)
-FIND_PACKAGE(fast REQUIRED)
-FIND_PACKAGE(Boost REQUIRED COMPONENTS thread system)
+# 依赖 Add plain cmake packages 
+FIND_PACKAGE(OpenCV REQUIRED)# opencv 库
+FIND_PACKAGE(Eigen REQUIRED)# eigen库
+FIND_PACKAGE(Sophus REQUIRED)# 李群李代数库 sophus
+FIND_PACKAGE(fast REQUIRED)# fast角点检测库
+FIND_PACKAGE(Boost REQUIRED COMPONENTS thread system)# 加速
 
 IF(USE_ROS)
   FIND_PACKAGE(catkin REQUIRED COMPONENTS roscpp roslib cmake_modules vikit_common vikit_ros)
@@ -65,17 +65,17 @@ ELSE()
   SET(LIBRARY_OUTPUT_PATH ${PROJECT_SOURCE_DIR}/lib)
 ENDIF()
 
-# Include dirs
+# 包含库文件 Include dirs
 INCLUDE_DIRECTORIES(
   include
-  ${Eigen_INCLUDE_DIRS}
-  ${OpenCV_INCLUDE_DIRS}
-  ${Sophus_INCLUDE_DIRS}
-  ${Boost_INCLUDE_DIRS}
-  ${fast_INCLUDE_DIRS}
+  ${Eigen_INCLUDE_DIRS}# eigen库
+  ${OpenCV_INCLUDE_DIRS}# opencv 库
+  ${Sophus_INCLUDE_DIRS}# 李群李代数库 sophus
+  ${Boost_INCLUDE_DIRS}# boost 加速
+  ${fast_INCLUDE_DIRS}# fast角点检测库
 )
 
-# Set link libraries
+# 连接库 Set link libraries
 LIST(APPEND LINK_LIBS 
   ${OpenCV_LIBS}
   ${Sophus_LIBRARIES}
@@ -91,29 +91,30 @@ ELSE()
   LIST(APPEND LINK_LIBS ${vikit_common_LIBRARIES})
 ENDIF()
 
+# 编译文件
 # Set sourcefiles
 LIST(APPEND SOURCEFILES
   src/frame_handler_mono.cpp
   src/frame_handler_base.cpp
-  src/frame.cpp
-  src/point.cpp
-  src/map.cpp
-  src/pose_optimizer.cpp
-  src/initialization.cpp
-  src/matcher.cpp
-  src/reprojector.cpp
-  src/feature_alignment.cpp
-  src/feature_detection.cpp
-  src/depth_filter.cpp
-  src/config.cpp
-  src/sparse_img_align.cpp)
+  src/frame.cpp         # 帧
+  src/point.cpp         # 点
+  src/map.cpp           # 地图
+  src/pose_optimizer.cpp# 位姿优化
+  src/initialization.cpp# 初始化
+  src/matcher.cpp       # 匹配
+  src/reprojector.cpp   # 投影
+  src/feature_alignment.cpp# 特征
+  src/feature_detection.cpp# 特征检测
+  src/depth_filter.cpp     # 深度滤波器
+  src/config.cpp           # 配置
+  src/sparse_img_align.cpp)# 稀疏图像配准
 
 # Add g2o if available
 IF(HAVE_G2O)
   FIND_PACKAGE(G2O REQUIRED)
   INCLUDE_DIRECTORIES(
     ${G2O_INCLUDE_DIR}
-    /usr/include/suitesparse # for cholmod
+    /usr/include/suitesparse # for cholmod 稀疏矩阵求解器
   )
   LIST(APPEND LINK_LIBS
     ${G2O_CORE_LIBRARY} ${G2O_STUFF_LIBRARY} ${G2O_SOLVER_CHOLMOD} ${G2O_SOLVER_CSPARSE} ${G2O_SOLVER_DENSE}
@@ -122,30 +123,30 @@ IF(HAVE_G2O)
   LIST(APPEND SOURCEFILES src/bundle_adjustment.cpp)
 ENDIF(HAVE_G2O)
 
-# Create svo library
+# 创建SVO 共享库 Create svo library
 ADD_LIBRARY(svo SHARED ${SOURCEFILES})
 TARGET_LINK_LIBRARIES(svo ${LINK_LIBS})
 
 ################################################################################
-# TESTS
+# TESTS 测试
 
-ADD_EXECUTABLE(test_feature_align test/test_feature_alignment.cpp)
+ADD_EXECUTABLE(test_feature_align test/test_feature_alignment.cpp)    # 特征配置
 TARGET_LINK_LIBRARIES(test_feature_align svo)
 
-ADD_EXECUTABLE(test_pipeline test/test_pipeline.cpp)
+ADD_EXECUTABLE(test_pipeline test/test_pipeline.cpp)                  # 测试流水线
 TARGET_LINK_LIBRARIES(test_pipeline svo)
 
-ADD_EXECUTABLE(test_matcher test/test_matcher.cpp)
+ADD_EXECUTABLE(test_matcher test/test_matcher.cpp)                    # 特征匹配
 TARGET_LINK_LIBRARIES(test_matcher svo)
 
-ADD_EXECUTABLE(test_feature_detection test/test_feature_detection.cpp)
+ADD_EXECUTABLE(test_feature_detection test/test_feature_detection.cpp)# 特征检测
 TARGET_LINK_LIBRARIES(test_feature_detection svo)
 
-ADD_EXECUTABLE(test_depth_filter test/test_depth_filter.cpp)
+ADD_EXECUTABLE(test_depth_filter test/test_depth_filter.cpp)          # 深度滤波
 TARGET_LINK_LIBRARIES(test_depth_filter svo)
 
-ADD_EXECUTABLE(test_sparse_img_align test/test_sparse_img_align.cpp)
+ADD_EXECUTABLE(test_sparse_img_align test/test_sparse_img_align.cpp)  # 稀疏图
 TARGET_LINK_LIBRARIES(test_sparse_img_align svo)
 
-ADD_EXECUTABLE(test_pose_optimizer test/test_pose_optimizer.cpp)
+ADD_EXECUTABLE(test_pose_optimizer test/test_pose_optimizer.cpp)      # 位姿优化
 TARGET_LINK_LIBRARIES(test_pose_optimizer svo) 
