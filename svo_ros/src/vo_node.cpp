@@ -137,21 +137,21 @@ main()函数
 */
 #include <ros/package.h>
 #include <string>
-#include <svo/frame_handler_mono.h>
-#include <svo/map.h>
-#include <svo/config.h>
-#include <svo_ros/visualizer.h>
+#include <svo/frame_handler_mono.h>// 视觉前端原理 视觉前端基础类
+#include <svo/map.h>// 地图管理 
+#include <svo/config.h>//SVO的全局配置
+#include <svo_ros/visualizer.h>// 可视化
 #include <vikit/params_helper.h>
-#include <sensor_msgs/Image.h>
-#include <sensor_msgs/Imu.h>
+#include <sensor_msgs/Image.h>//ros的传感器消息 类 图像
+#include <sensor_msgs/Imu.h>//imu惯性传感器
 #include <std_msgs/String.h>
-#include <message_filters/subscriber.h>
-#include <message_filters/synchronizer.h>
-#include <message_filters/sync_policies/approximate_time.h>
-#include <image_transport/image_transport.h>
-#include <boost/thread.hpp>
-#include <cv_bridge/cv_bridge.h>
-#include <Eigen/Core>
+#include <message_filters/subscriber.h>// ros消息滤波器  订阅
+#include <message_filters/synchronizer.h>// 消息同步
+#include <message_filters/sync_policies/approximate_time.h>//时间戳
+#include <image_transport/image_transport.h>// 图像传输
+#include <boost/thread.hpp>// boost线程
+#include <cv_bridge/cv_bridge.h>// opencv格式数据 转到
+#include <Eigen/Core>// 矩阵运算
 #include <vikit/abstract_camera.h>
 #include <vikit/camera_loader.h>
 #include <vikit/user_input_thread.h>
@@ -162,142 +162,184 @@ namespace svo {
 /// SVO Interface
 class VoNode
 {
-public:
-  svo::FrameHandlerMono* vo_;
-  svo::Visualizer visualizer_;
-  bool publish_markers_;                 //!< publish only the minimal amount of info (choice for embedded devices)
-  bool publish_dense_input_;
-  boost::shared_ptr<vk::UserInputThread> user_input_thread_;
-  ros::Subscriber sub_remote_key_;
-  std::string remote_input_;
-  vk::AbstractCamera* cam_;
-  bool quit_;
-  VoNode();
-  ~VoNode();
-  void imgCb(const sensor_msgs::ImageConstPtr& msg);
-  void processUserActions();
-  void remoteKeyCb(const std_msgs::StringConstPtr& key_input);
-};
+    public:
+      svo::FrameHandlerMono* vo_;// 单目vo
+      svo::Visualizer visualizer_;
+      // 发布ar虚拟体
+      bool publish_markers_;   //!< publish only the minimal amount of info (choice for embedded devices)
+      bool publish_dense_input_;
+        // 首先开辟了一个线程用于监听控制台输入（用到了boost库）：
+      boost::shared_ptr<vk::UserInputThread> user_input_thread_;
+        // 订阅节点
+      ros::Subscriber sub_remote_key_;
+      std::string remote_input_;
+      vk::AbstractCamera* cam_;
+      bool quit_;
+      VoNode();//构造函数
+      ~VoNode();//析构函数
+      // 图像订阅 话题 回调函数 callback function
+      void imgCb(const sensor_msgs::ImageConstPtr& msg);
+      void processUserActions();
+      void remoteKeyCb(const std_msgs::StringConstPtr& key_input);
+    };
 
-VoNode::VoNode() :
-  vo_(NULL),
-  publish_markers_(vk::getParam<bool>("svo/publish_markers", true)),
-  publish_dense_input_(vk::getParam<bool>("svo/publish_dense_input", false)),
-  remote_input_(""),
-  cam_(NULL),
-  quit_(false)
-{
-  // Start user input thread in parallel thread that listens to console keys
-  if(vk::getParam<bool>("svo/accept_console_user_input", true))
-    user_input_thread_ = boost::make_shared<vk::UserInputThread>();
+    //构造函数
+    VoNode::VoNode() :
+      vo_(NULL),// 初始化视觉前端VO（通过定义变量vo_以及svo::FrameHandlerMono构造函数完成）
+      publish_markers_(vk::getParam<bool>("svo/publish_markers", true)),
+      publish_dense_input_(vk::getParam<bool>("svo/publish_dense_input", false)),
+      remote_input_(""),
+      cam_(NULL),
+      quit_(false)
+    {
+      // Start user input thread in parallel thread that listens to console keys
+      if(vk::getParam<bool>("svo/accept_console_user_input", true))
+    // 1. 首先开辟了一个线程用于监听控制台输入（用到了boost库）
+        user_input_thread_ = boost::make_shared<vk::UserInputThread>();
 
-  // Create Camera
-  if(!vk::camera_loader::loadFromRosNs("svo", cam_))
-    throw std::runtime_error("Camera model not correctly specified.");
+    // 2. 然后加载摄像机参数（svo文件夹），用到了vikit工具库  Create Camera
+      if(!vk::camera_loader::loadFromRosNs("svo", cam_))
+        throw std::runtime_error("Camera model not correctly specified.");
 
-  // Get initial position and orientation
-  visualizer_.T_world_from_vision_ = Sophus::SE3(
-      vk::rpy2dcm(Vector3d(vk::getParam<double>("svo/init_rx", 0.0),
-                           vk::getParam<double>("svo/init_ry", 0.0),
-                           vk::getParam<double>("svo/init_rz", 0.0))),
-      Eigen::Vector3d(vk::getParam<double>("svo/init_tx", 0.0),
-                      vk::getParam<double>("svo/init_ty", 0.0),
-                      vk::getParam<double>("svo/init_tz", 0.0)));
+    // 3. 初始化位姿，用到了Sophus、vikit  Get initial position and orientation
+      visualizer_.T_world_from_vision_ = Sophus::SE3(
+          // 其中，Sophus::SE3(R，t) 用于构建一个欧式群SE3，R，t为旋转矩阵和平移向量
+          //  vk::rpy2dcm(const Vector3d &rpy) 可将欧拉角 rpy 转换为 旋转矩阵dcm
+          vk::rpy2dcm(Vector3d(vk::getParam<double>("svo/init_rx", 0.0),
+                               vk::getParam<double>("svo/init_ry", 0.0),
+                               vk::getParam<double>("svo/init_rz", 0.0))),
+          // 平移向量t Eigen::Vector3d
+          Eigen::Vector3d(vk::getParam<double>("svo/init_tx", 0.0),
+                          vk::getParam<double>("svo/init_ty", 0.0),
+                          vk::getParam<double>("svo/init_tz", 0.0)));
 
-  // Init VO and start
-  vo_ = new svo::FrameHandlerMono(cam_);
-  vo_->start();
-}
+    // 4. 初始化视觉前端VO（通过定义变量vo_以及svo::FrameHandlerMono构造函数完成）
+      vo_ = new svo::FrameHandlerMono(cam_);// 定义在frame_handler_mono.cpp中
+          // 4.1 先调用了FrameHandlerBase（定义在frame_handler_base.cpp中）
+          // FrameHandlerBase先完成了一些设置，如最近10帧中特征数量等。
+          // 然后初始化了一系列算法性能监视器
+          // 4.2 然后进行重投影的初始化，
+          // 由Reprojector（定义在reprojector.cpp中）构造函数完成（initializeGrid）：
+          // 4.3 通过DepthFilter（深度滤波器）构造函数完成初始化
+          // 4.4 调用initialize初始化函数 深度滤波器启动线程
+    // 5. 调用svo::FrameHandlerMono的start函数
+      // 你可能在frame_handler_mono.cpp中找不到start函数，
+      // 因为start原本是定义在frame_handler_base.h中，
+      //而FrameHandlerMono是继承自FrameHandlerBase，所以可以调用start函数。
+      vo_->start();// 所以通过start函数将set_start_置为true
+    }
 
-VoNode::~VoNode()
-{
-  delete vo_;
-  delete cam_;
-  if(user_input_thread_ != NULL)
-    user_input_thread_->stop();
-}
+    //析构函数
+    VoNode::~VoNode()
+    {
+      delete vo_;
+      delete cam_;
+      if(user_input_thread_ != NULL)
+        user_input_thread_->stop();
+    }
+    // 图像订阅回调函数
+    void VoNode::imgCb(const sensor_msgs::ImageConstPtr& msg)
+    {
+      cv::Mat img;// opencv类型图像格式
+      try {
+    // 4.1 首先完成了图片的读取      
+         // ros 图像消息转换成 opencv类型图像格式
+        img = cv_bridge::toCvShare(msg, "mono8")->image;
+      } catch (cv_bridge::Exception& e) {
+        ROS_ERROR("cv_bridge exception: %s", e.what());
+      }
+  // 4.2 处理用户行为, 开辟控制台输入线程，并根据输入的字母进行相应的操作。      
+      processUserActions();// 处理用户行为  处理按键输入等中断
+  // 4.3 vo视觉里程计添加一帧图像 附带时间戳
+        // 调用FrameHandlerMono：：addImage函数（定义在frame_handler_mono.cpp中）
+      vo_->addImage(img, msg->header.stamp.toSec());//其中，msg->header.stamp.toSec()可获取系统时间（以秒为单位）
+        // 会完成一系列的初始化 Map型变量map_的初始化（包括关键帧和候选点的清空等）新构造一个Frame对象
+        // 对传入的img创建图像金字塔img_pyr_（一个Mat型向量）。
+  // 4.4 调用Visualizer类成员函数publishMinimal（进行ROS消息有关的设置）。
+      visualizer_.publishMinimal(img, vo_->lastFrame(), *vo_, msg->header.stamp.toSec());
+  // 4.5 调用Visualizer类成员函数visualizeMarkers（里面又调用了
+      // publishTfTransform、publishCameraMarke、publishPointMarker、publishMapRegion等函数），
+      // 进行AR Marker和关键帧的显示。
+      if(publish_markers_ && vo_->stage() != FrameHandlerBase::STAGE_PAUSED)
+        visualizer_.visualizeMarkers(vo_->lastFrame(), vo_->coreKeyframes(), vo_->map());
+  // 4.6调用Visualizer类成员函数exportToDense函数（稠密显示特征点）。
+      if(publish_dense_input_)
+        visualizer_.exportToDense(vo_->lastFrame());
+  // 4.7 判断stage_，若值为STAGE_PAUSED，则将线程挂起100000微秒（0.1秒）。
+      if(vo_->stage() == FrameHandlerMono::STAGE_PAUSED)
+        usleep(100000);
+    }
 
-void VoNode::imgCb(const sensor_msgs::ImageConstPtr& msg)
-{
-  cv::Mat img;
-  try {
-    img = cv_bridge::toCvShare(msg, "mono8")->image;
-  } catch (cv_bridge::Exception& e) {
-    ROS_ERROR("cv_bridge exception: %s", e.what());
-  }
-  processUserActions();
-  vo_->addImage(img, msg->header.stamp.toSec());
-  visualizer_.publishMinimal(img, vo_->lastFrame(), *vo_, msg->header.stamp.toSec());
+    // 处理用户行为  处理按键输入等中断
+    void VoNode::processUserActions()
+    {
+      char input = remote_input_.c_str()[0];//c字符类型
+      remote_input_ = "";
 
-  if(publish_markers_ && vo_->stage() != FrameHandlerBase::STAGE_PAUSED)
-    visualizer_.visualizeMarkers(vo_->lastFrame(), vo_->coreKeyframes(), vo_->map());
+      if(user_input_thread_ != NULL)//用户输入线程
+      {
+        char console_input = user_input_thread_->getInput();
+        if(console_input != 0)
+          input = console_input;
+      }
 
-  if(publish_dense_input_)
-    visualizer_.exportToDense(vo_->lastFrame());
-
-  if(vo_->stage() == FrameHandlerMono::STAGE_PAUSED)
-    usleep(100000);
-}
-
-void VoNode::processUserActions()
-{
-  char input = remote_input_.c_str()[0];
-  remote_input_ = "";
-
-  if(user_input_thread_ != NULL)
-  {
-    char console_input = user_input_thread_->getInput();
-    if(console_input != 0)
-      input = console_input;
-  }
-
-  switch(input)
-  {
-    case 'q':
-      quit_ = true;
-      printf("SVO user input: QUIT\n");
-      break;
-    case 'r':
-      vo_->reset();
-      printf("SVO user input: RESET\n");
-      break;
-    case 's':
-      vo_->start();
-      printf("SVO user input: START\n");
-      break;
-    default: ;
-  }
-}
-
-void VoNode::remoteKeyCb(const std_msgs::StringConstPtr& key_input)
-{
-  remote_input_ = key_input->data;
-}
+      switch(input)
+      {
+        case 'q':// quit 停止
+          quit_ = true;
+          printf("SVO user input: QUIT\n");
+          break;
+        case 'r':// reset 重置
+          vo_->reset();
+          printf("SVO user input: RESET\n");
+          break;
+        case 's':// start开始
+          vo_->start();
+          printf("SVO user input: START\n");
+          break;
+        default: ;
+      }
+    }
+    // 按键响应话题回调函数
+    void VoNode::remoteKeyCb(const std_msgs::StringConstPtr& key_input)
+    {
+      remote_input_ = key_input->data;
+    }
 
 } // namespace svo
 
+// 主程序
 int main(int argc, char **argv)
 {
+//  1.初始化节点 完成了ros的初始化
   ros::init(argc, argv, "svo");
-  ros::NodeHandle nh;
+// 2. 创建节点句柄NodeHandle ，名为nh（创建节点前必须要有NodeHandle）
+  ros::NodeHandle nh;//节点句柄
   std::cout << "create vo_node" << std::endl;
+//3. 创建voNode类 同时VoNode的构造函数完成一系列初始化操作。
   svo::VoNode vo_node;
 
-  // subscribe to cam msgs
-  std::string cam_topic(vk::getParam<std::string>("svo/cam_topic", "camera/image_raw"));
-  image_transport::ImageTransport it(nh);
+// 4. 订阅相机图像话题 subscribe to cam msgs
+  std::string cam_topic(vk::getParam<std::string>("svo/cam_topic", "camera/image_raw"));//获取参数配置文件内的配置参数
+    // 参数名 "svo/cam_topic"  默认参数值 "camera/image_raw"
+  image_transport::ImageTransport it(nh);//图像传输类
+    // 创建图片发布/订阅器，名为it，使用了之前创建的节点句柄nh；
   image_transport::Subscriber it_sub = it.subscribe(cam_topic, 5, &svo::VoNode::imgCb, &vo_node);
-
-  // subscribe to remote input
+    //  对于节点vo_node，一旦有图像（5代表队列长度，应该是5张图片）发布到主题cam_topic时，就执行svo::VoNode::imgCb函数
+  // 订阅键盘输入话题 subscribe to remote input
+// 5. 订阅远程输入消息（应该指的就是键盘输入）
   vo_node.sub_remote_key_ = nh.subscribe("svo/remote_key", 5, &svo::VoNode::remoteKeyCb, &vo_node);
-
+    // 有消息发布到主题svo/remote_key（队列长度是5，如果输入6个数据，那么第6个就会被舍弃），
+    // 就执行svo::VoNode::remoteKeyCb函数。
+    // 返回值保存到vo_node.sub_remote_key_。
   // start processing callbacks
+// 6. 无图像信息输入或者键盘输入q/CTRL+C等 ，则停止程序，打印 SVO终止 信息。
   while(ros::ok() && !vo_node.quit_)
   {
     ros::spinOnce();
     // TODO check when last image was processed. when too long ago. publish warning that no msgs are received!
   }
 
-  printf("SVO terminated.\n");
+  printf("SVO terminated.\n");// 打印 SVO终止 信息。
   return 0;
 }
