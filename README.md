@@ -1,3 +1,61 @@
+# 结构 
+    rpg_svo
+    ├── rqt_svo       为与 显示界面 有关的功能插件
+    ├── svo           主程序文件，编译 svo_ros 时需要
+    │   ├── include
+    │   │   └── svo
+    │   │       ├── bundle_adjustment.h        光束法平差（图优化）
+    │   │       ├── config.h                   SVO的全局配置
+    │   │       ├── depth_filter.h             像素深度估计（基于概率） 高斯均值混合模型
+    │   │       ├── feature_alignment.h        特征匹配
+    │   │       ├── feature_detection.h        特征检测  faster角点
+    │   │       ├── feature.h（无对应cpp）      特征定义
+    │   │       ├── frame.h                    frame定义
+    │   │       ├── frame_handler_base.h       视觉前端基础类
+    │   │       ├── frame_handler_mono.h       单目视觉前端原理
+    │   │       ├── global.h（无对应cpp）       有关全局的一些配置
+    │   │       ├── initialization.h           单目初始化
+    │   │       ├── map.h                      地图的生成与管理
+    │   │       ├── matcher.h                  重投影匹配与极线搜索
+    │   │       ├── point.h                    3D点的定义
+    │   │       ├── pose_optimizer.h           图优化（光束法平差最优化重投影误差）
+    │   │       ├── reprojector.h              重投影
+    │   │       └── sparse_img_align.h         直接法优化位姿（最小化光度误差）
+    │   ├── src
+    │   │   ├── bundle_adjustment.cpp
+    │   │   ├── config.cpp
+    │   │   ├── depth_filter.cpp
+    │   │   ├── feature_alignment.cpp
+    │   │   ├── feature_detection.cpp
+    │   │   ├── frame.cpp
+    │   │   ├── frame_handler_base.cpp
+    │   │   ├── frame_handler_mono.cpp
+    │   │   ├── initialization.cpp
+    │   │   ├── map.cpp
+    │   │   ├── matcher.cpp
+    │   │   ├── point.cpp
+    │   │   ├── pose_optimizer.cpp
+    │   │   ├── reprojector.cpp
+    │   │   └── sparse_img_align.cpp
+    ├── svo_analysis           未知
+    ├── svo_msgs               一些配置文件，编译 svo_ros 时需要
+    └── svo_ros                为与ros有关的程序，包括 launch 文件
+         ├── CMakeLists.txt    定义ROS节点并指导rpg_svo的编译
+    ├── include
+    │   └── svo_ros
+    │    └── visualizer.h                
+    ├── launch
+    │   └── test_rig3.launch   ROS启动文件
+    ├── package.xml
+    ├── param                   摄像头等一些配置文件
+    ├── rviz_config.rviz        Rviz配置文件（启动Rviz时调用）
+    └── src
+             ├── benchmark_node.cpp
+             ├── visualizer.cpp        地图可视化
+             └── vo_node.cpp           VO主节点
+
+
+
 SVO
 ===
 
