@@ -82,7 +82,8 @@ main()函数
         4.3.2 清空core_kfs_和overlap_kfs_，这两个都是同种指针的集合。core_kfs_是Frame类型的智能指针shared_ptr，
               用于表示一帧周围的关键帧。overlap_kfs_是一个向量，存储的是由一个指针和一个数值构成的组合变量，
               用于表示具有重叠视野的关键帧，数值代表了重叠视野中的地标数。
-        4.3.3 创建新帧并记录至日志文件。新构造一个Frame对象，然后用Frame型智能指针变量new_frame指向它。
+        4.3.3 创建新帧并记录至日志文件。
+              新构造一个Frame对象，然后用Frame型智能指针变量new_frame指向它。
                .reset函数将智能指针原来所指对象销毁并指向新对象。
                创建Frame对象时，发生了一系列操作，通过其构造函数完成。
                Frame构造函数定义在frame.cpp中：
@@ -91,14 +92,16 @@ main()函数
 
         4.3.4 处理帧。首先设置UpdateResult型枚举变量res，值为RESULT_FAILURE。
                然后判断stage_：
-               值为STAGE_FIRST_FRAME，执行processFirstFrame()；
+               值为STAGE_FIRST_FRAME，执行 processFirstFrame()；
                值为STAGE_SECOND_FRAME，执行processSecondFrame()；
                值为STAGE_DEFAULT_FRAME，执行processFrame()；
                值为STAGE_RELOCALIZING，执行relocalizeFrame。
-             其中processFirstFrame作用是处理第1帧并将其设置为关键帧；processSecondFrame作用是处理第1帧后面所有帧，
-             直至找到一个新的关键帧；processFrame作用是处理两个关键帧之后的所有帧；
-             relocalizeFrame作用是在相关位置重定位帧以提供关键帧（直译过来是这样，不太理解，
-             看了后面的代码也许就知道了。。。。心疼自己~#@￥%&&我又回来了，看了后面后觉得它的作用是重定位）。
+             其中:
+             processFirstFrame() 作用是处理第1帧并将其设置为关键帧；
+             processSecondFrame()    作用是处理第1帧后面所有帧，直至找到一个新的关键帧；
+             processFrame()          作用是处理两个关键帧之后的所有帧；
+             relocalizeFrame()       作用是在相关位置重定位帧以提供关键帧（直译过来是这样，不太理解，
+             
              由于这4个函数比较大，所以它们的解析放在最后附里面吧。
           4.3.5 将new_frame_赋给last_frame_，然后将new_frame_给清空，供下次使用。
           4.3.6 执行finishFrameProcessingCommon，传入的参数为last_frame_的id号和图像中的特征数nOb的值、res的值。
@@ -255,6 +258,11 @@ class VoNode
       vo_->addImage(img, msg->header.stamp.toSec());//其中，msg->header.stamp.toSec()可获取系统时间（以秒为单位）
         // 会完成一系列的初始化 Map型变量map_的初始化（包括关键帧和候选点的清空等）新构造一个Frame对象
         // 对传入的img创建图像金字塔img_pyr_（一个Mat型向量）。
+        //其中比较重要的函数:
+        //processFirstFrame() 作用是处理第1帧并将其设置为关键帧；
+        //processSecondFrame()    作用是处理第1帧后面所有帧，直至找到一个新的关键帧；
+        //processFrame()          作用是处理两个关键帧之后的所有帧；
+        //relocalizeFrame()       作用是在相关位置重定位帧以提供关键帧（直译过来是这样，不太理解，
   // 4.4 调用Visualizer类成员函数publishMinimal（进行ROS消息有关的设置）。
       visualizer_.publishMinimal(img, vo_->lastFrame(), *vo_, msg->header.stamp.toSec());
   // 4.5 调用Visualizer类成员函数visualizeMarkers（里面又调用了
