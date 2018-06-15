@@ -12,7 +12,7 @@
     │   │       ├── feature.h（无对应cpp）      特征定义
     │   │       ├── frame.h                    frame定义
     │   │       ├── frame_handler_base.h       视觉前端基础类
-    │   │       ├── frame_handler_mono.h       单目视觉前端原理(较重要)
+    │   │       ├── frame_handler_mono.h       单目视觉前端原理(较重要)==============================
     │   │       ├── global.h（无对应cpp）       有关全局的一些配置
     │   │       ├── initialization.h           单目初始化
     │   │       ├── map.h                      地图的生成与管理
@@ -52,9 +52,16 @@
     └── src
              ├── benchmark_node.cpp
              ├── visualizer.cpp        地图可视化
-             └── vo_node.cpp           VO主节点
+             └── vo_node.cpp           VO主节点=======================================
+             
+    ==============frame_handler_mono.cpp  ============================================       
+    processFirstFrame();// 作用是处理第1帧并将其设置为关键帧；
+    processSecondFrame();// 作用是处理第1帧后面所有帧，直至找到一个新的关键帧；
+    processFrame();// 作用是处理两个关键帧之后的所有帧；
+    relocalizeFrame(SE3(Matrix3d::Identity(),Vector3d::Zero()),map_.getClosestKeyframe(last_frame_));
+    //作用是在相关位置重定位帧以提供关键帧
 
-
+    这4个函数被主函数文件vo_node.cpp中的addImage函数调用，他们与addImage一样都定义在frame_handler_mono.cpp中。
 
 SVO
 ===
