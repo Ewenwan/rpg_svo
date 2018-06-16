@@ -77,7 +77,7 @@ namespace svo
       }
   
 // 如果startFrameProcessingCommon返回false(暂停状态stage_ == STAGE_PAUSED )，则addImage结束，直接执行return。
-// 开始处理帧 判断系统状态
+// 开始处理帧 判断系统状态  设置系统状态为处理第一帧 stage_ = STAGE_FIRST_FRAME
   bool FrameHandlerBase::startFrameProcessingCommon(const double timestamp)
       {
 // 首先判断set_start_，值为true时，（在创建vo_node时就已通过VoNode构造函数将set_start_设置为true）
