@@ -68,9 +68,12 @@ namespace svo {
 // 添加图像==================================================================================
     void FrameHandlerMono::addImage(const cv::Mat& img, const double timestamp)
     {
+        
 // 4.3.1 首先进行if判断，如果startFrameProcessingCommon返回false(暂停状态stage_ == STAGE_PAUSED )，
+      // 最主要是进行 系统状态判断
       // 则addImage结束，直接执行return。
       // frame_handler_base.cpp 中
+      // 会设置 stage_ = STAGE_FIRST_FRAME; 处理第一帧
       if(!startFrameProcessingCommon(timestamp))
         return;
       
