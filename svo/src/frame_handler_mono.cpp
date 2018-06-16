@@ -114,6 +114,7 @@ namespace svo {
       new_frame_.reset();
 // 4.3.6 完成帧处理， 执行finishFrameProcessingCommon，传入的参数为last_frame_的id号和图像中的特征数nOb的值、res的值。
       // finish processing
+      // frame_handler_base.cpp 中
       finishFrameProcessingCommon(last_frame_->id_, res, last_frame_->nObs());
     }
   
