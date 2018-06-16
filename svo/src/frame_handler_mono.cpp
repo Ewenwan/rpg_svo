@@ -96,13 +96,14 @@ namespace svo {
       UpdateResult res = RESULT_FAILURE;
    // 然后判断stage_ 阶段标志：
       if(stage_ == STAGE_DEFAULT_FRAME)
-        res = processFrame();// 作用是处理两个关键帧之后的所有帧；
+        res = processFrame();// 作用是处理两个关键帧之后的所有帧； 
       
       else if(stage_ == STAGE_SECOND_FRAME)
         res = processSecondFrame();// 作用是处理第1帧后面所有帧，直至找到一个新的关键帧；
       
       else if(stage_ == STAGE_FIRST_FRAME)
-        res = processFirstFrame();// 作用是处理第1帧并将其设置为关键帧
+        res = processFirstFrame();// 作用是处理第1帧并将其设置为关键帧( 特点点数超过100个点才设置第一帧为为关键帧)
+                                  // 并且设置 
       
       else if(stage_ == STAGE_RELOCALIZING)
         // 作用是在相关位置重定位帧以提供关键帧 
@@ -120,7 +121,7 @@ namespace svo {
   
   
 // 作用是处理第1帧并将其设置为关键帧========================================================
-//  特点点数超过100个点才设置第一帧为为关键帧
+//  特点点数超过100个点才设置第一帧为为关键帧，且设置系统处理标志为第二帧
     FrameHandlerMono::UpdateResult FrameHandlerMono::processFirstFrame()
     {
      // 初始化第一帧的位姿 用于表示从世界坐标到初始相机坐标的变换矩阵
