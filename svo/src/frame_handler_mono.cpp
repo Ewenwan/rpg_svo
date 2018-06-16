@@ -9,16 +9,24 @@ relocalizeFrame(SE3(Matrix3d::Identity(),Vector3d::Zero()),map_.getClosestKeyfra
 //作用是在相关位置重定位帧以提供关键帧
 
 startFrameProcessingCommon(timestamp) 设置处理第一帧  stage_ = STAGE_FIRST_FRAME;
-processFirstFrame(); fast角点特征，单应变换求取位姿变换，特点点数超过100个点才设置第一帧为为关键帧，
+
+processFirstFrame(); 处理第一帧，直到找打第一个关键帧==================================
+                     fast角点特征，单应变换求取位姿变换，特点点数超过100个点才设置第一帧为为关键帧，
                      计算单应性矩阵（根据前两个关键帧）来初始化位姿，3d点
                      且设置系统处理标志为第二帧 stage_ = STAGE_SECOND_FRAME
-processSecondFrame(); 光流法 金字塔多尺度 跟踪关键点,根据跟踪的数量和阈值，做跟踪成功/失败的判断
+                     
+processSecondFrame(); 处理第一帧关键帧到第二帧关键帧之间的所有帧========================
+                      光流法 金字塔多尺度 跟踪关键点,根据跟踪的数量和阈值，做跟踪成功/失败的判断
                       前后两帧计算单应性矩阵，根据重投影误差记录内点数量，根据阈值，判断跟踪 成功/失败,计算3d点
                       集束调整优化, 非线性最小二乘优化, 
                       计算场景深度均值和最小值
                       深度滤波器对深度进行滤波，高斯均值混合模型进行更新深度值
                       设置系统状态 stage_= STAGE_DEFAULT_FRAME；
                       
+processFrame(); 处理前两个关键帧后的所有帧  =============================================
+
+
+
 */
 #include <svo/config.h>
 #include <svo/frame_handler_mono.h>
@@ -130,8 +138,11 @@ namespace svo {
       finishFrameProcessingCommon(last_frame_->id_, res, last_frame_->nObs());
     }
   
-  
+// processFirstFrame(); 处理第一帧，直到找打第一个关键帧==================================  
 // 作用是处理第1帧并将其设置为关键帧========================================================
+// 1. fast角点匹配
+// 2. 单应变换求变换矩阵
+// 3. 设置系统状态标志 stage_ = STAGE_SECOND_FRAME
 //  特点点数超过100个点才设置第一帧为为关键帧，且设置系统处理标志为第二帧 stage_ = STAGE_SECOND_FRAME
     FrameHandlerMono::UpdateResult FrameHandlerMono::processFirstFrame()
     {
@@ -160,7 +171,7 @@ namespace svo {
       return RESULT_IS_KEYFRAME;
     }
 
-  
+// processSecondFrame(); 处理第一帧关键帧到第二帧关键帧之间的所有帧======================== 
 // 作用是处理第1帧后面所有帧，直至找到一个新的关键帧============================
 // 1. 金字塔多尺度光流跟踪关键点
 // 2. 计算前后两帧的单应变换矩阵，计算3d点
@@ -212,18 +223,25 @@ namespace svo {
       return RESULT_IS_KEYFRAME;
     }
   
-  
-// 作用是处理两个关键帧之后的所有帧====================================================
-// 
+// processFrame(); 处理前两个关键帧后的所有帧  ============================================= 
+// 1. 设置初始位姿,上帧的位姿初始化为当前帧的位姿
+// 2. 前后帧图像稀疏对齐匹配，求匹配点对
+// 3.
+// 4.
+// 5. 
     FrameHandlerBase::UpdateResult FrameHandlerMono::processFrame()
     {
+// 1. 设置初始位姿，即将上帧（last_frame_）的变换矩阵（T_f_w_）赋给当前帧的变换矩阵（T_f_w_）。
       // Set initial pose TODO use prior
       new_frame_->T_f_w_ = last_frame_->T_f_w_;
-
+// 2. 图像的稀疏对齐（应该是匹配的意思）（类似于直接法）：3d点重投影，最小化像素匹配差值
+      // SVO通过直接特征对齐获得亚像素特征匹配精度
       // sparse image align
       SVO_START_TIMER("sparse_img_align");
+      //  
       SparseImgAlign img_align(Config::kltMaxLevel(), Config::kltMinLevel(),
                                30, SparseImgAlign::GaussNewton, false, false);
+      // 
       size_t img_align_n_tracked = img_align.run(last_frame_, new_frame_);
       SVO_STOP_TIMER("sparse_img_align");
       SVO_LOG(img_align_n_tracked);
