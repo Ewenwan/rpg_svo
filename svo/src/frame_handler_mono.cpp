@@ -2,31 +2,35 @@
 // 视觉前端原理  深度滤波线程 基于 fast特征检测 和 地图点深度值滤波回调函数
 /*
 ==============frame_handler_mono.cpp  ============================================       
-processFirstFrame();// 作用是处理第1帧并将其设置为关键帧；
+processFirstFrame(); // 作用是处理第1帧并将其设置为关键帧；
 processSecondFrame();// 作用是处理第1帧后面所有帧，直至找到一个新的关键帧；
-processFrame();// 作用是处理两个关键帧之后的所有帧；
-relocalizeFrame(SE3(Matrix3d::Identity(),Vector3d::Zero()),map_.getClosestKeyframe(last_frame_));
-//作用是在相关位置重定位帧以提供关键帧
+processFrame();      // 作用是处理两个关键帧之后的所有帧；
+relocalizeFrame(=);  //作用是在相关位置重定位帧以提供关键帧
 
 startFrameProcessingCommon(timestamp) 设置处理第一帧  stage_ = STAGE_FIRST_FRAME;
 
 processFirstFrame(); 处理第一帧，直到找打第一个关键帧==================================
-                     fast角点特征，单应变换求取位姿变换，特点点数超过100个点才设置第一帧为为关键帧，
-                     计算单应性矩阵（根据前两个关键帧）来初始化位姿，3d点
-                     且设置系统处理标志为第二帧 stage_ = STAGE_SECOND_FRAME
+                1. fast角点特征，单应变换求取位姿变换，特点点数超过100个点才设置第一帧为为关键帧，
+                2. 计算单应性矩阵（根据前两个关键帧）来初始化位姿，3d点
+                3. 且设置系统处理标志为第二帧 stage_ = STAGE_SECOND_FRAME
                      
 processSecondFrame(); 处理第一帧关键帧到第二帧关键帧之间的所有帧========================
-                      光流法 金字塔多尺度 跟踪关键点,根据跟踪的数量和阈值，做跟踪成功/失败的判断
-                      前后两帧计算单应性矩阵，根据重投影误差记录内点数量，根据阈值，判断跟踪 成功/失败,计算3d点
-                      集束调整优化, 非线性最小二乘优化, 
-                      计算场景深度均值和最小值
-                      深度滤波器对深度进行滤波，高斯均值混合模型进行更新深度值
-                      设置系统状态 stage_= STAGE_DEFAULT_FRAME；
+                1. 光流法 金字塔多尺度 跟踪关键点,根据跟踪的数量和阈值，做跟踪成功/失败的判断
+                2. 前后两帧计算单应性矩阵，根据重投影误差记录内点数量，根据阈值，判断跟踪 成功/失败,计算3d点
+                3. 集束调整优化, 非线性最小二乘优化, 
+                4. 计算场景深度均值和最小值
+                5. 深度滤波器对深度进行滤波，高斯均值混合模型进行更新深度值
+                6. 设置系统状态 stage_= STAGE_DEFAULT_FRAME；
                       
 processFrame(); 处理前两个关键帧后的所有帧  =============================================
+                1. 设置初始位姿,上帧的位姿初始化为当前帧的位姿
+                2. 直接法 最小化 3d-2d 重投影 像素误差 求解位姿 LM算法优化位姿)
+                3. 最小化 3d-2d 重投影像素误差 优化特征块的预测位置 更新3d-2d特征块匹配关系
+                4. 使用优化后的 3d-2d特征块匹配关系， 类似直接法，最小化2d位置误差，来优化相机位姿(pose)
+                5. 使用优化后的 3d-2d特征块匹配关系， 类似直接法，最小化2d位置误差，来优化3D点(structure)
+                6. 深度值滤波
 
-
-
+relocalizeFrame(); 重定位模式==================================================
 */
 #include <svo/config.h>
 #include <svo/frame_handler_mono.h>
@@ -225,31 +229,40 @@ namespace svo {
   
 // processFrame(); 处理前两个关键帧后的所有帧  ============================================= 
 // 1. 设置初始位姿,上帧的位姿初始化为当前帧的位姿
-// 2. 前后帧图像稀疏对齐匹配，求匹配点对
-// 3.
-// 4.
-// 5. 
+// 2. 直接法 最小化 3d-2d 重投影 像素误差 求解位姿 LM算法优化位姿)
+// 3. 最小化 3d-2d 重投影像素误差 优化特征块的预测位置 更新3d-2d特征块匹配关系
+// 4. 使用优化后的 3d-2d特征块匹配关系， 类似直接法，最小化2d位置误差，来优化相机位姿(pose)
+// 5. 使用优化后的 3d-2d特征块匹配关系， 类似直接法，最小化2d位置误差，来优化3D点(structure)
+// 6. 深度值滤波
     FrameHandlerBase::UpdateResult FrameHandlerMono::processFrame()
     {
 // 1. 设置初始位姿，即将上帧（last_frame_）的变换矩阵（T_f_w_）赋给当前帧的变换矩阵（T_f_w_）。
       // Set initial pose TODO use prior
       new_frame_->T_f_w_ = last_frame_->T_f_w_;
-// 2. 图像的稀疏对齐（应该是匹配的意思）（类似于直接法）：3d点重投影，最小化像素匹配差值
+      
+// 2.直接法 最小化 3d-2d 重投影 像素误差 求解位姿 
+      // 图像的稀疏对齐（应该是匹配的意思）（类似于直接法）：3d点重投影，最小化像素匹配差值
       // SVO通过直接特征对齐获得亚像素特征匹配精度
+      // 用于图像对齐的地图点是上一帧所能看到的地图点，按先验知识来讲，图像帧间变换比较小，
+      // 我们有理由相信上一帧和当前帧所能看到场景大部分相同。
+      // 使用上一帧中看到的3d点(对应着上一帧图像的2d像素坐标)
+      // 根据位姿变换投影到当前帧像素平面上，计算亚像素值，和上一帧对应点的像素值做差，LM算法优化误差，得到优化后的位姿和3d点
       // sparse image align
       SVO_START_TIMER("sparse_img_align");
       //  
       SparseImgAlign img_align(Config::kltMaxLevel(), Config::kltMinLevel(),
                                30, SparseImgAlign::GaussNewton, false, false);
-      // 
       size_t img_align_n_tracked = img_align.run(last_frame_, new_frame_);
       SVO_STOP_TIMER("sparse_img_align");
       SVO_LOG(img_align_n_tracked);
       SVO_DEBUG_STREAM("Img Align:\t Tracked = " << img_align_n_tracked);
-
+      
+// 3. 最小化 3d-2d 重投影像素误差 优化特征块的预测位置 更新3d-2d特征块匹配关系
+   // 最小化地图重投影和特征对齐（或许是匹配）。
+   // 然后进行判断，如果匹配到的特征数小于阈值，则打印没有匹配到足够的特征信息，同时设置当前帧变换矩阵为上帧变换矩阵
       // map reprojection & feature alignment
       SVO_START_TIMER("reproject");
-      reprojector_.reprojectMap(new_frame_, overlap_kfs_);
+      reprojector_.reprojectMap(new_frame_, overlap_kfs_);// 地图重投影
       SVO_STOP_TIMER("reproject");
       const size_t repr_n_new_references = reprojector_.n_matches_;
       const size_t repr_n_mps = reprojector_.n_trials_;
@@ -262,8 +275,8 @@ namespace svo {
         tracking_quality_ = TRACKING_INSUFFICIENT;
         return RESULT_FAILURE;
       }
-
-      // pose optimization
+// 4. 使用优化后的 3d-2d特征块匹配关系， 类似直接法，最小化2d位置误差，来对相机位姿(pose)以及特征点位置（structure）进行反向优化
+  //相机位姿优化 pose optimization
       SVO_START_TIMER("pose_optimizer");
       size_t sfba_n_edges_final;
       double sfba_thresh, sfba_error_init, sfba_error_final;
@@ -277,36 +290,42 @@ namespace svo {
       if(sfba_n_edges_final < 20)
         return RESULT_FAILURE;
 
-      // structure optimization
+    // 3d地图点优化 structure optimization
       SVO_START_TIMER("point_optimizer");
       optimizeStructure(new_frame_, Config::structureOptimMaxPts(), Config::structureOptimNumIter());
       SVO_STOP_TIMER("point_optimizer");
 
-      // select keyframe
-      core_kfs_.insert(new_frame_);
+ // 5. 选择关键帧 select keyframe
+      core_kfs_.insert(new_frame_);// 将当前帧插入core_kfs_（用于存储附近关键帧）。
+      // 6. 将跟踪质量设置为 sfba_n_edges_final
       setTrackingQuality(sfba_n_edges_final);
-      if(tracking_quality_ == TRACKING_INSUFFICIENT)
+//7. 判断tracking_quality_ ，若等于TRACKING_INSUFFICIENT，同时设置当前帧变换矩阵为上帧变换矩阵  
+      if(tracking_quality_ == TRACKING_INSUFFICIENT)//跟踪的点不多，值不准确，使用上次的位姿
       {
-        new_frame_->T_f_w_ = last_frame_->T_f_w_; // reset to avoid crazy pose jumps
+        new_frame_->T_f_w_ = last_frame_->T_f_w_; // 避免位姿乱跳 抑制噪声 reset to avoid crazy pose jumps
         return RESULT_FAILURE;
       }
+// 8. 获取场景最小和平均深度。根据平均深度判断是否符合关键帧选择标准，
+      // 若不合适或者tracking_quality_ 值为 TRACKING_BAD，就将当前帧添加入深度滤波器，然后返回RESULT_NO_KEYFRAME。
       double depth_mean, depth_min;
-      frame_utils::getSceneDepth(*new_frame_, depth_mean, depth_min);
+      frame_utils::getSceneDepth(*new_frame_, depth_mean, depth_min);// 场景最小和平均深度
       if(!needNewKf(depth_mean) || tracking_quality_ == TRACKING_BAD)
       {
-        depth_filter_->addFrame(new_frame_);
+        depth_filter_->addFrame(new_frame_);// 对当前帧(候选关键帧)的深度值使用深度滤波器进行滤波更新
         return RESULT_NO_KEYFRAME;
       }
+// 9. 将当前帧的深度值进行滤波更新后，设置为关键帧
       new_frame_->setKeyframe();
       SVO_DEBUG_STREAM("New keyframe selected.");
 
       // new keyframe selected
       for(Features::iterator it=new_frame_->fts_.begin(); it!=new_frame_->fts_.end(); ++it)
         if((*it)->point != NULL)
-          (*it)->point->addFrameRef(*it);
+          (*it)->point->addFrameRef(*it);//参考帧
+// 10. 将map_.point_candidates_中与当前帧相关的特征点添加到当前帧。
       map_.point_candidates_.addCandidatePointToFrame(new_frame_);
 
-      // optional bundle adjustment
+// 11. 条件编译，如果定义了USE_BUNDLE_ADJUSTMENT，则进行BA优化。 optional bundle adjustment
     #ifdef USE_BUNDLE_ADJUSTMENT
       if(Config::lobaNumIter() > 0)
       {
@@ -314,6 +333,7 @@ namespace svo {
         setCoreKfs(Config::coreNKfs());
         size_t loba_n_erredges_init, loba_n_erredges_fin;
         double loba_err_init, loba_err_fin;
+        // 局部两帧之间的 BA优化
         ba::localBA(new_frame_.get(), &core_kfs_, &map_,
                     loba_n_erredges_init, loba_n_erredges_fin,
                     loba_err_init, loba_err_fin);
@@ -323,25 +343,27 @@ namespace svo {
                          "Error {"<<loba_err_init<<", "<<loba_err_fin<<"}");
       }
     #endif
-
-      // init new depth-filters
+      
+// 12. 将当前关键帧添加到深度滤波器 init new depth-filters
       depth_filter_->addKeyframe(new_frame_, depth_mean, 0.5*depth_min);
-
+      
+// 13. 移除map_中距离较远的关键帧
       // if limited number of keyframes, remove the one furthest apart
       if(Config::maxNKfs() > 2 && map_.size() >= Config::maxNKfs())
       {
         FramePtr furthest_frame = map_.getFurthestKeyframe(new_frame_->pos());
         depth_filter_->removeKeyframe(furthest_frame); // TODO this interrupts the mapper thread, maybe we can solve this better
-        map_.safeDeleteFrame(furthest_frame);
+        map_.safeDeleteFrame(furthest_frame);// 移除map_中距离较远的关键帧。
       }
 
-      // add keyframe to map
+// 14. 添加当前关键帧到map_地图 。 add keyframe to map
       map_.addKeyframe(new_frame_);
 
       return RESULT_IS_KEYFRAME;
     }
   
 // 作用是在相关位置重定位帧以提供关键帧 =================================================
+// 重定位模式
     FrameHandlerMono::UpdateResult FrameHandlerMono::relocalizeFrame(
         const SE3& T_cur_ref,
         FramePtr ref_keyframe)
