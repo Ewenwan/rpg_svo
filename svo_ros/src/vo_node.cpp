@@ -73,7 +73,7 @@ main()函数
               然后执行resetAll（），resetAll函数定义在frame_handler_base.h中：virtual void resetAll(){resetCommon();}，
               且resetCommon()定义在同文件中，主要完成了Map型变量map_的初始化（包括关键帧和候选点的清空等），同时stage_
               被改为STAGE_PAUSED，set_reset和set_start都被设置为false，还有其它一些设置。执行resetAll后，
-              设置stage_为STAGE_FIRST_FRAME。
+              设置=====stage_ 为  STAGE_FIRST_FRAME 处理第一帧===================。
               然后判断stage是否为STAGE_PAUSED，若是则结束startFrameProcessingCommon，并返回false。
               经过两个if后，将传进函数的系统时间和“New Frame”等信息记录至日志文件中。
               并启动vk::Timer型变量timer_（用于计量程序执行时间，可精确到毫秒级）。
@@ -92,7 +92,7 @@ main()函数
 
         4.3.4 处理帧。首先设置UpdateResult型枚举变量res，值为RESULT_FAILURE。
                然后判断stage_：
-               值为STAGE_FIRST_FRAME，执行 processFirstFrame()；
+               值为STAGE_FIRST_FRAME，执行 processFirstFrame(),如果成功(关键点数量>100),则设置为第二帧模式；
                值为STAGE_SECOND_FRAME，执行processSecondFrame()；
                值为STAGE_DEFAULT_FRAME，执行processFrame()；
                值为STAGE_RELOCALIZING，执行relocalizeFrame。
@@ -258,8 +258,10 @@ class VoNode
       vo_->addImage(img, msg->header.stamp.toSec());//其中，msg->header.stamp.toSec()可获取系统时间（以秒为单位）
         // 会完成一系列的初始化 Map型变量map_的初始化（包括关键帧和候选点的清空等）新构造一个Frame对象
         // 对传入的img创建图像金字塔img_pyr_（一个Mat型向量）。
+        // startFrameProcessingCommon()设置 系统状态为处理第一帧 stage_ = STAGE_FIRST_FRAME
         //其中比较重要的函数:
-        //processFirstFrame() 作用是处理第1帧并将其设置为关键帧；
+        //processFirstFrame() 作用是处理第1帧并将其设置为关键帧；(如果特征点数量>100,则设置这一帧为第一个关键帧)
+                             // 同时设置系统状态为 处理第二帧 
         //processSecondFrame()    作用是处理第1帧后面所有帧，直至找到一个新的关键帧；
         //processFrame()          作用是处理两个关键帧之后的所有帧；
         //relocalizeFrame()       作用是在相关位置重定位帧以提供关键帧（直译过来是这样，不太理解，
