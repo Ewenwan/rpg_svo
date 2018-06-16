@@ -73,7 +73,9 @@ main()函数
               然后执行resetAll（），resetAll函数定义在frame_handler_base.h中：virtual void resetAll(){resetCommon();}，
               且resetCommon()定义在同文件中，主要完成了Map型变量map_的初始化（包括关键帧和候选点的清空等），同时stage_
               被改为STAGE_PAUSED，set_reset和set_start都被设置为false，还有其它一些设置。执行resetAll后，
-              设置=====stage_ 为  STAGE_FIRST_FRAME 处理第一帧===================。
+              
+              设置=====stage_ = STAGE_FIRST_FRAME 处理第一帧===================。
+              
               然后判断stage是否为STAGE_PAUSED，若是则结束startFrameProcessingCommon，并返回false。
               经过两个if后，将传进函数的系统时间和“New Frame”等信息记录至日志文件中。
               并启动vk::Timer型变量timer_（用于计量程序执行时间，可精确到毫秒级）。
@@ -93,8 +95,17 @@ main()函数
         4.3.4 处理帧。首先设置UpdateResult型枚举变量res，值为RESULT_FAILURE。
                然后判断stage_：
                值为STAGE_FIRST_FRAME，执行 processFirstFrame(),如果成功(关键点数量>100),则设置为第二帧模式；
+                                          faste角点提取匹配，
+                                          单应矩阵求解变换，计算3d点
+                                          设置系统状态 stage_ = STAGE_SECOND_FRAME
                值为STAGE_SECOND_FRAME，执行processSecondFrame()；
+                                          金字塔多尺度光流跟踪
+                                          计算前后两帧的单应变换矩阵，计算3d点
+                                          集束调整优化, 非线性最小二乘优化
+                                          计算场景深度均值和最小值，进行 高斯均值深度值滤波优化
+                                          设置系统状态 stage_= STAGE_DEFAULT_FRAME；
                值为STAGE_DEFAULT_FRAME，执行processFrame()；
+               
                值为STAGE_RELOCALIZING，执行relocalizeFrame。
              其中:
              processFirstFrame() 作用是处理第1帧并将其设置为关键帧；
