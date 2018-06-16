@@ -120,21 +120,37 @@ namespace svo {
   
   
 // 作用是处理第1帧并将其设置为关键帧========================================================
-// 
+//  特点点数超过100个点才设置第一帧为为关键帧
     FrameHandlerMono::UpdateResult FrameHandlerMono::processFirstFrame()
     {
+     // 初始化第一帧的位姿 用于表示从世界坐标到初始相机坐标的变换矩阵
       new_frame_->T_f_w_ = SE3(Matrix3d::Identity(), Vector3d::Zero());
+     // 检测第一帧初始化情况
+        // 其中klt_homography_init_是KltHomographyInit（FrameHandlerMono的友元类）类型的类，
+        // 用于计算单应性矩阵（根据前两个关键帧）来初始化位姿。
       if(klt_homography_init_.addFirstFrame(new_frame_) == initialization::FAILURE)
-        return RESULT_NO_KEYFRAME;
+        return RESULT_NO_KEYFRAME;// 第一帧初始化错误 没有关键帧
+     //第一帧出海华成功 设置关键帧   
       new_frame_->setKeyframe();
+     //    （定义在initialization.cpp中）
       map_.addKeyframe(new_frame_);
+        // 初始化px_cur_（一个二维点向量，存储当前帧中被用于跟踪的关键点坐标）
+        // 以及frame_ref_（一个frame型智能指针，设置参考帧）
+        // 对new_frame进行Fast特征检测（调用FastDetector::detect函数）,得到二维点和三维点，分别赋给px_ref_和f_ref_
+        // 判断特征数是否小于100，如果是，就结束addFirstFrame并返回FAILURE
+        // 继续执行程序，将传入的new_frame_赋值给frame_ref_
+        // 将new_frame_设置为关键帧后，通过addKeyFrame函数把它存入keyframes_中。
+   // 切换系统状态，设置第二帧 标志
       stage_ = STAGE_SECOND_FRAME;
+   // 将信息“Init: Selected first frame”记录至日志。
       SVO_INFO_STREAM("Init: Selected first frame.");
+   // 返回处理标志   特点点数超过100个点才设置第一帧为为关键帧
       return RESULT_IS_KEYFRAME;
     }
 
   
 // 作用是处理第1帧后面所有帧，直至找到一个新的关键帧=============================================
+// 
     FrameHandlerBase::UpdateResult FrameHandlerMono::processSecondFrame()
     {
       initialization::InitResult res = klt_homography_init_.addSecondFrame(new_frame_);
