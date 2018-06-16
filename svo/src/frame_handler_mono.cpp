@@ -47,12 +47,15 @@ namespace svo {
             Config::gridSize(), 
             Config::nPyrLevels() ) );
 
-   // 地图点深度值滤波 回调函数
+   // 地图点深度值滤波 回调函数 回调函数指针所指内容，即由bind函数生成的指针
       DepthFilter::callback_t depth_filter_cb = boost::bind(
           &MapPointCandidates::newCandidatePoint, &map_.point_candidates_, _1, _2);
-    // 深度滤波
+    // 设置了特征检测器指针、回调函数指针、随机种子、线程、新关键帧深度的初值
+    // 深度滤波 设置了特征检测器指针类型为fast特征检测器 
+        // 设置了回调函数指针所指内容，即由bind函数生成的指针。
+        // 特征检测指针和回调函数指针在一起生成一个深度滤波器depth_filter_。
       depth_filter_ = new DepthFilter(feature_detector, depth_filter_cb);
-   // 启动线程
+   // 启动线程   深度滤波器启动线程
       depth_filter_->startThread();
     }
 
@@ -65,7 +68,9 @@ namespace svo {
 // 添加图像==================================================================================
     void FrameHandlerMono::addImage(const cv::Mat& img, const double timestamp)
     {
-// 4.3.1 首先进行if判断，如果startFrameProcessingCommon返回false，则addImage结束，直接执行return。
+// 4.3.1 首先进行if判断，如果startFrameProcessingCommon返回false(暂停状态stage_ == STAGE_PAUSED )，
+      // 则addImage结束，直接执行return。
+      // frame_handler_base.cpp 中
       if(!startFrameProcessingCommon(timestamp))
         return;
       
