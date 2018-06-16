@@ -8,6 +8,17 @@ processFrame();// 作用是处理两个关键帧之后的所有帧；
 relocalizeFrame(SE3(Matrix3d::Identity(),Vector3d::Zero()),map_.getClosestKeyframe(last_frame_));
 //作用是在相关位置重定位帧以提供关键帧
 
+startFrameProcessingCommon(timestamp) 设置处理第一帧  stage_ = STAGE_FIRST_FRAME;
+processFirstFrame(); fast角点特征，单应变换求取位姿变换，特点点数超过100个点才设置第一帧为为关键帧，
+                     计算单应性矩阵（根据前两个关键帧）来初始化位姿，3d点
+                     且设置系统处理标志为第二帧 stage_ = STAGE_SECOND_FRAME
+processSecondFrame(); 光流法 金字塔多尺度 跟踪关键点,根据跟踪的数量和阈值，做跟踪成功/失败的判断
+                      前后两帧计算单应性矩阵，根据重投影误差记录内点数量，根据阈值，判断跟踪 成功/失败,计算3d点
+                      集束调整优化, 非线性最小二乘优化, 
+                      计算场景深度均值和最小值
+                      深度滤波器对深度进行滤波，高斯均值混合模型进行更新深度值
+                      设置系统状态 stage_= STAGE_DEFAULT_FRAME；
+                      
 */
 #include <svo/config.h>
 #include <svo/frame_handler_mono.h>
@@ -103,7 +114,7 @@ namespace svo {
       
       else if(stage_ == STAGE_FIRST_FRAME)
         res = processFirstFrame();// 作用是处理第1帧并将其设置为关键帧( 特点点数超过100个点才设置第一帧为为关键帧)
-                                  // 并且设置 
+                                  // 并且设置  stage_ = STAGE_SECOND_FRAME 处理第二帧模式
       
       else if(stage_ == STAGE_RELOCALIZING)
         // 作用是在相关位置重定位帧以提供关键帧 
@@ -121,7 +132,7 @@ namespace svo {
   
   
 // 作用是处理第1帧并将其设置为关键帧========================================================
-//  特点点数超过100个点才设置第一帧为为关键帧，且设置系统处理标志为第二帧
+//  特点点数超过100个点才设置第一帧为为关键帧，且设置系统处理标志为第二帧 stage_ = STAGE_SECOND_FRAME
     FrameHandlerMono::UpdateResult FrameHandlerMono::processFirstFrame()
     {
      // 初始化第一帧的位姿 用于表示从世界坐标到初始相机坐标的变换矩阵
@@ -141,7 +152,7 @@ namespace svo {
         // 判断特征数是否小于100，如果是，就结束addFirstFrame并返回FAILURE
         // 继续执行程序，将传入的new_frame_赋值给frame_ref_
         // 将new_frame_设置为关键帧后，通过addKeyFrame函数把它存入keyframes_中。
-   // 切换系统状态，设置第二帧 标志
+   // 切换系统状态，设置第二帧 标志  stage_ = STAGE_SECOND_FRAME
       stage_ = STAGE_SECOND_FRAME;
    // 将信息“Init: Selected first frame”记录至日志。
       SVO_INFO_STREAM("Init: Selected first frame.");
@@ -150,29 +161,52 @@ namespace svo {
     }
 
   
-// 作用是处理第1帧后面所有帧，直至找到一个新的关键帧=============================================
-// 
+// 作用是处理第1帧后面所有帧，直至找到一个新的关键帧============================
+// 1. 金字塔多尺度光流跟踪关键点
+// 2. 计算前后两帧的单应变换矩阵，计算3d点
+// 3. 集束调整优化, 非线性最小二乘优化
+// 4. 计算场景深度均值和最小值
+// 5. 深度滤波器对深度进行滤波，高斯均值混合模型进行更新深度值
+// 6. 设置系统状态 stage_= STAGE_DEFAULT_FRAME；
     FrameHandlerBase::UpdateResult FrameHandlerMono::processSecondFrame()
     {
       initialization::InitResult res = klt_homography_init_.addSecondFrame(new_frame_);
+       // 1.1 首先调用trackKlt函数跟踪特征（LK光流法） 金字塔多尺度跟踪 
+          // 跟踪特征点（上帧）坐标集合px_ref 
+        // px_cur用来存储光流法计算出的当前帧中特征点坐标。
+        // px_cur是三维向量（确切说应该是一个存储2维坐标的向量）：特征序号、特征坐标,id x y。
+        // 像素坐标转换为世界坐标 px_cur -> cam2world函数 -> f_cur
+        // 将特征点移动的像素距离(光流)存入disparities_中
+        // 判断光流跟踪到的点的数量是否小于阈值，小于阈值则跟踪失败,返回 FAILURE。
+        // 调用getMedian函数得到disparities_中的中位数作为平均距离，幅值给变量disparity。
+        // 然后判断disparity，若值小于设定值，结束addSecondFrame函数，并返回 NO_KEYFRAME。
+        // 调用computeHomography函数计算单应矩阵, 根据重投影误差记录内点数量
+        //  判断内点数量，若小于设定阈值，则结束addSecondFrame函数，并返回 FAILURE。
       if(res == initialization::FAILURE)
-        return RESULT_FAILURE;
+        return RESULT_FAILURE;//第二帧跟踪失败
+        
       else if(res == initialization::NO_KEYFRAME)
-        return RESULT_NO_KEYFRAME;
-
-      // two-frame bundle adjustment
+        return RESULT_NO_KEYFRAME;// 移动距离过小，不设置为关键帧
+  // 移动距离超过阈值
+    // two-frame bundle adjustment
+// 3. 条件编译，如果定义了USE_BUNDLE_ADJUSTMENT，就进行BA优化，通过调用ba::twoViewBA函数
+   // 集束调整优化 非线性最小二乘优化
     #ifdef USE_BUNDLE_ADJUSTMENT
       ba::twoViewBA(new_frame_.get(), map_.lastKeyframe().get(), Config::lobaThresh(), &map_);
     #endif
-
-      new_frame_->setKeyframe();
+      new_frame_->setKeyframe();// 4. 设置关键帧
+        // 最终选出最具有代表性的5个作为关键点。实质上是1个靠近图像中心的点和4个靠近图像四个角的点。
       double depth_mean, depth_min;
+// 5. 通过函数getSceneDepth获取场景平均深度（depth_mean）最小深度（depth_min）。
       frame_utils::getSceneDepth(*new_frame_, depth_mean, depth_min);
+// 6. 向深度滤波器depth_filter中添加关键帧（当前帧），传入参数depth_mean、0.5 * depth_min（不知道为啥除以2）进行初始化。
       depth_filter_->addKeyframe(new_frame_, depth_mean, 0.5*depth_min);
-
+// 7. 想地图中添加关键帧
       // add frame to map
       map_.addKeyframe(new_frame_);
+// 8. 设置系统状态 stage_= STAGE_DEFAULT_FRAME。
       stage_ = STAGE_DEFAULT_FRAME;
+// 9. 调用klt_homography_init_.reset()，初始化px_cur_和frame_ref_,迭代为下一次左准备
       klt_homography_init_.reset();
       SVO_INFO_STREAM("Init: Selected second frame, triangulated initial map.");
       return RESULT_IS_KEYFRAME;
@@ -180,6 +214,7 @@ namespace svo {
   
   
 // 作用是处理两个关键帧之后的所有帧====================================================
+// 
     FrameHandlerBase::UpdateResult FrameHandlerMono::processFrame()
     {
       // Set initial pose TODO use prior
