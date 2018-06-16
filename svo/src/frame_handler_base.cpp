@@ -111,36 +111,42 @@ namespace svo
       {
         SVO_DEBUG_STREAM("Frame: "<<update_id<<"\t fps-avg = "<< 1.0/acc_frame_timings_.getMean()<<"\t nObs = "<<acc_num_obs_.getMean());
         SVO_LOG(dropout);
-
-        // save processing time to calculate fps
+// 统计当前帧处理时间并压入acc_frame_timings_ 来统计最近10帧的总处理时间。
         acc_frame_timings_.push_back(timer_.stop());
+// 如果stage_值为STAGE_DEFAULT_FRAME，还将nOb传入的值压入acc_num_obs_以统计最近10帧的检测出的特征点总数。
         if(stage_ == STAGE_DEFAULT_FRAME)
           acc_num_obs_.push_back(num_observations);
-        num_obs_last_ = num_observations;
+        num_obs_last_ = num_observations;//迭代
         SVO_STOP_TIMER("tot_time");
-
+// 是一个条件编译判断，如果定义了SVO_TRACE，跟踪
       #ifdef SVO_TRACE
-        g_permon->writeToFile();
+        g_permon->writeToFile();// 性能监控 写入日志（定义在performance_monitor.cpp中）
         {
+          // 然后用互斥锁对线程进行写保护，
           boost::unique_lock<boost::mutex> lock(map_.point_candidates_.mut_);
+          // 再将特征点数量记录至日志
           size_t n_candidates = map_.point_candidates_.candidates_.size();
           SVO_LOG(n_candidates);
         }
       #endif
-
+ // 将传入的参数res值赋给dropout
+        // 然后判断dropout值为RESULT_FAILURE  系统状态阶段为 默认帧 或者重定位模式
         if(dropout == RESULT_FAILURE &&
             (stage_ == STAGE_DEFAULT_FRAME || stage_ == STAGE_RELOCALIZING ))
         {
-          stage_ = STAGE_RELOCALIZING;
-          tracking_quality_ = TRACKING_INSUFFICIENT;
+          stage_ = STAGE_RELOCALIZING;// 重定位模型
+          tracking_quality_ = TRACKING_INSUFFICIENT;//跟踪质量
         }
+     // 当只有dropout == RESULT_FAILURE时，就执行resetAll()
         else if (dropout == RESULT_FAILURE)
-          resetAll();
-        if(set_reset_)
+          resetAll();// 进行Map型变量map_的初始化（包括关键帧和候选点的清空等）
+            // 同时stage_被改为STAGE_PAUSED  暂停
+        if(set_reset_)// 后判断set_reset_，如果为真，同样执行resetAll()
           resetAll();
 
         return 0;
       }
+      
 // 重置
       void FrameHandlerBase::resetCommon()
       {
