@@ -9,12 +9,12 @@ relocalizeFrame(=);  //作用是在相关位置重定位帧以提供关键帧
 
 startFrameProcessingCommon(timestamp) 设置处理第一帧  stage_ = STAGE_FIRST_FRAME;
 
-processFirstFrame(); 处理第一帧，直到找打第一个关键帧==================================
+processFirstFrame(); 处理第一帧，直到找打第一个关键帧==============================================
                 1. fast角点特征，单应变换求取位姿变换，特点点数超过100个点才设置第一帧为为关键帧，
                 2. 计算单应性矩阵（根据前两个关键帧）来初始化位姿，3d点
                 3. 且设置系统处理标志为第二帧 stage_ = STAGE_SECOND_FRAME
                      
-processSecondFrame(); 处理第一帧关键帧到第二帧关键帧之间的所有帧========================
+processSecondFrame(); 处理第一帧关键帧到第二帧关键帧之间的所有帧(跟踪上一帧) ========================
                 1. 光流法 金字塔多尺度 跟踪关键点,根据跟踪的数量和阈值，做跟踪成功/失败的判断
                 2. 前后两帧计算单应性矩阵，根据重投影误差记录内点数量，根据阈值，判断跟踪 成功/失败,计算3d点
                 3. 集束调整优化, 非线性最小二乘优化, 
@@ -22,15 +22,20 @@ processSecondFrame(); 处理第一帧关键帧到第二帧关键帧之间的所�
                 5. 深度滤波器对深度进行滤波，高斯均值混合模型进行更新深度值
                 6. 设置系统状态 stage_= STAGE_DEFAULT_FRAME；
                       
-processFrame(); 处理前两个关键帧后的所有帧  =============================================
-                1. 设置初始位姿,上帧的位姿初始化为当前帧的位姿
+processFrame(); 处理前两个关键帧后的所有帧(跟踪上一帧) ============================================
+                1. 设置初始位姿, 上帧的位姿初始化为当前帧的位姿
                 2. 直接法 最小化 3d-2d 重投影 像素误差 求解位姿 LM算法优化位姿)
                 3. 最小化 3d-2d 重投影像素误差 优化特征块的预测位置 更新3d-2d特征块匹配关系
                 4. 使用优化后的 3d-2d特征块匹配关系， 类似直接法，最小化2d位置误差，来优化相机位姿(pose)
                 5. 使用优化后的 3d-2d特征块匹配关系， 类似直接法，最小化2d位置误差，来优化3D点(structure)
                 6. 深度值滤波
 
-relocalizeFrame(); 重定位模式==================================================
+relocalizeFrame(); 重定位模式（跟踪参考帧）=======================================================
+                1. 得到上一帧附近的关键帧作为参考帧 ref_keyframe
+                2. 进行直接法 最小化 3d-2d 重投影 像素误差 求解当前帧的位姿
+                3. 若跟踪质量较高(匹配特征点数大于30) 将参考帧设置为上一帧
+                4. 直接法跟踪上一帧参考帧进行processFrame()处理( 其实就是跟踪参考帧模式 )
+                5. 如果跟踪成功就设置为相应的跟踪后的位姿，否者设置为参考帧的位姿
 */
 #include <svo/config.h>
 #include <svo/frame_handler_mono.h>
@@ -364,33 +369,46 @@ namespace svo {
   
 // 作用是在相关位置重定位帧以提供关键帧 =================================================
 // 重定位模式
+// 1. 得到上一帧附近的关键帧作为参考帧 ref_keyframe
+// 2. 进行直接法 最小化 3d-2d 重投影 像素误差 求解当前帧的位姿
+// 3. 若跟踪质量较高(匹配特征点数大于30) 将参考帧设置为上一帧
+// 4. 直接法跟踪上一帧参考帧( 其实就是跟踪参考帧模式 )
+// 5. 如果跟踪成功就设置为相应的跟踪后的位姿，否者设置为参考帧的位姿
     FrameHandlerMono::UpdateResult FrameHandlerMono::relocalizeFrame(
         const SE3& T_cur_ref,
         FramePtr ref_keyframe)
     {
+// 1. 调用时，使用 map_.getClosestKeyframe()得到上一帧附近的关键帧作为参考帧 ref_keyframe
+//    res = relocalizeFrame(SE3(Matrix3d::Identity(), Vector3d::Zero()),
+//    map_.getClosestKeyframe(last_frame_));
       SVO_WARN_STREAM_THROTTLE(1.0, "Relocalizing frame");
-      if(ref_keyframe == nullptr)
+// 2. 判断ref_keyframe值，若为nullptr，则结束并返回RESULT_FAILURE。
+      if(ref_keyframe == nullptr)// 没找到关键帧
       {
         SVO_INFO_STREAM("No reference keyframe.");
-        return RESULT_FAILURE;
+        return RESULT_FAILURE;// 返回错误
       }
+// 3. 直接法 最小化 3d-2d 重投影 像素误差 求解位姿
       SparseImgAlign img_align(Config::kltMaxLevel(), Config::kltMinLevel(),
                                30, SparseImgAlign::GaussNewton, false, false);
       size_t img_align_n_tracked = img_align.run(ref_keyframe, new_frame_);
+// 4. 如果匹配特征数大于30， 
       if(img_align_n_tracked > 30)
       {
-        SE3 T_f_w_last = last_frame_->T_f_w_;
-        last_frame_ = ref_keyframe;
-        FrameHandlerMono::UpdateResult res = processFrame();
+        SE3 T_f_w_last = last_frame_->T_f_w_;//将 上帧变换矩阵 赋给 T_f_w_last，
+        last_frame_ = ref_keyframe;// 设置last_frame为参考帧ref_keyframe
+        FrameHandlerMono::UpdateResult res = processFrame();// 跟踪上一帧 参考帧
         if(res != RESULT_FAILURE)
         {
-          stage_ = STAGE_DEFAULT_FRAME;
+          stage_ = STAGE_DEFAULT_FRAME;// 跟踪上一帧参考帧成功 进入普通的跟踪上一帧模式
           SVO_INFO_STREAM("Relocalization successful.");
         }
         else
+          // 设置为 最近的关键帧处的位姿
           new_frame_->T_f_w_ = T_f_w_last; // reset to last well localized pose
         return res;
       }
+      
       return RESULT_FAILURE;
     }
   
